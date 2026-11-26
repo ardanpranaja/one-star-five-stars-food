@@ -13,7 +13,16 @@ const sourcePath = path.join(__dirname, "entry.txt");
 const outputDir = process.env.MAKEFUN_OUTPUT_DIR || "/output";
 const outputPath = path.join(outputDir, "entry.txt");
 
-const review = fs.readFileSync(sourcePath, "utf8");
+let review = fs.readFileSync(sourcePath, "utf8");
+
+// Defensive normalization: a stray leading BOM or a trailing newline
+// from an editor must not change the judged text or break the gate.
+if (review.charCodeAt(0) === 0xfeff) {
+  review = review.slice(1);
+}
+if (review.endsWith("\n")) {
+  review = review.slice(0, -1);
+}
 
 // Gate checks mirroring the competition gate: the entry must be UTF-8 text
 // of 1 to 200 characters, not only white space, and a single line. Fail
@@ -30,5 +39,13 @@ if (review.indexOf("\n") !== -1 || review.indexOf("\r") !== -1) {
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.writeFileSync(outputPath, review, "utf8");
+
+// Round-trip check: what was written must be byte-identical to the
+// source line. If the disk disagrees, fail loudly instead of shipping
+// a silently corrupted entry.
+const written = fs.readFileSync(outputPath, "utf8");
+if (written !== review) {
+  throw new Error("round-trip check failed: output differs from source line");
+}
 
 console.log("wrote " + outputPath + " (" + review.length + " chars)");
